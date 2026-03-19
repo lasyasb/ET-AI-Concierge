@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (Auth UID)
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required)
+    //   - displayName: string (optional)
+    //   - ageGroup: string (optional)
+    //   - incomeRange: string (optional)
+    //   - goals: list (optional)
+    //   - riskAppetite: string (optional)
+    //   - interests: list (optional)
+    //   - persona: string (optional)
+    //   - riskLevel: string (optional)
+    //   - intentScore: number (optional)
+    //   - orientation: string (optional)
+    //   - reasoning: string (optional)
+    //   - recommendations: list of maps (optional)
+    //   - onboardingComplete: bool (optional)
+    //   - createdAt: timestamp (optional)
+    //
+    // Collection: users/{userId}/chat
+    // Document ID: auto-generated
+    // Fields:
+    //   - role: string (required, 'user' or 'model')
+    //   - content: string (required)
+    //   - timestamp: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.email.size() < 256;
+    }
+
+    function isValidChatMessage(data) {
+      return data.keys().hasAll(['role', 'content', 'timestamp']) &&
+             data.role in ['user', 'model'] &&
+             data.content is string &&
+             data.content.size() < 5000;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+      allow delete: if false; // Users can't delete their profile for now
+
+      match /chat/{messageId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidChatMessage(request.resource.data);
+        allow update, delete: if false;
+      }
+    }
+  }
+}
